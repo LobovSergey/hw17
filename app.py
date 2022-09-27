@@ -1,6 +1,6 @@
 # app.py
 
-from flask import Flask, request, jsonify
+from flask import Flask, request
 from flask_restx import Api, Resource
 from flask_sqlalchemy import SQLAlchemy
 from marshmallow import Schema, fields
@@ -79,19 +79,25 @@ genres_schema = GenreSchema(many=True)
 @movie_ns.route('/')
 class MovieView(Resource):
     def get(self):
-        directors = request.args.get('directors')
-        genre = request.args.get('genre')
-        result = None
-        if directors:
-            result = db.session.query(Movie).filter(Movie.director_id == directors)
-        if genre:
-            result = db.session.query(Movie).filter(Movie.genre_id == genre)
-        if result is not None:
-            return movies_schema.dump(result), 200
+        directors_id = request.args.get('directors_id')
+        genre_id = request.args.get('genre_id')
+        result = db.session.query(Movie)
+        if directors_id:
+            result = result.filter(Movie.director_id == directors_id)
+        if genre_id:
+            result = result.filter(Movie.genre_id == genre_id)
+        end_result = movies_schema.dump(result)
+        if len(end_result) != 0:
+            return end_result, 200
         else:
-            all_movies = db.session.query(Movie).all()
-            result = movies_schema.dump(all_movies)
-            return result, 200
+            return 'Wrong response', 404
+
+    def post(self):
+        data = request.json
+        new_movies = Movie(**data)
+        with db.session.begin():
+            db.session.add(new_movies)
+        return 'new data added', 201
 
 
 @movie_ns.route('/<int:uid>')
@@ -99,14 +105,33 @@ class MovieView(Resource):
     def get(self, uid):
         searched_movie = db.session.query(Movie).get(uid)
         result = movie_schema.dump(searched_movie)
-        return result
+        return result, 200
+
+    def put(self, uid):
+        with db.session.begin():
+            request_data = request.json
+            edited_movie = db.session.query(Movie).get(uid)
+            edited_movie.title = request_data.get('title')
+            edited_movie.description = request_data.get('description')
+            edited_movie.trailer = request_data.get('trailer')
+            edited_movie.year = request_data.get('year')
+            edited_movie.rating = request_data.get('rating')
+            edited_movie.genre_id = request_data.get('genre_id')
+            edited_movie.director_id = request_data.get('director_id')
+            db.session.add(edited_movie)
+        return f'Movie edited'
+
+    def delete(self, uid):
+        with db.session.begin():
+            db.session.query(Movie).filter(Movie.id == uid).delete()
+        return 'Movie removed'
 
 
 @directors_ns.route('/')
 class DirectorView(Resource):
     def get(self):
         result = db.session.query(Director).all()
-        return directors_schema.dump(result)
+        return directors_schema.dump(result), 200
 
     def post(self):
         data = request.json
@@ -118,6 +143,10 @@ class DirectorView(Resource):
 
 @directors_ns.route('/<int:uid>')
 class DirectorView(Resource):
+    def get(self, uid):
+        result = db.session.query(Director).get(uid)
+        return genre_schema.dump(result), 200
+
     def delete(self, uid):
         with db.session.begin():
             db.session.query(Director).filter(Director.id == uid).delete()
@@ -148,6 +177,10 @@ class GenresView(Resource):
 
 @genres_ns.route('/<int:uid>')
 class GenreView(Resource):
+    def get(self, uid):
+        result = db.session.query(Genre).get(uid)
+        return genre_schema.dump(result)
+
     def delete(self, uid):
         with db.session.begin():
             db.session.query(Genre).filter(Genre.id == uid).delete()
